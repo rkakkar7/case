@@ -27,6 +27,7 @@ var userStore usermodel.UserStore
 var MAX_CLIENT int = 20
 var natsCon stan.Conn
 var natsAdress string = "nats://127.0.0.1:4222"
+var TIMEOUT = time.Second * 5
 
 const ClusterID = "test-cluster"
 const ClientID = "router1"
@@ -44,8 +45,15 @@ func init() {
 func (router *Router) handleUserGetAll(w http.ResponseWriter, r *http.Request) {
 	log.Infof("handleUserGetAll start")
 	defer log.Infof("handleUserGetAll end")
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// select {
+	// case <-time.After(TIMEOUT):
+	// 	w.WriteHeader(http.StatusGatewayTimeout)
+	// case resp := <-ch:
+	// 	w.Header().Set("Content-Type", "application/json")
+	// 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// 	w.Write(resp.Payload)
+	// }
 }
 
 func (router *Router) handleCreateUser(w http.ResponseWriter, r *http.Request) {
@@ -68,10 +76,16 @@ func (router *Router) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	resp := <-ch
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Write(resp.Payload)
+	select {
+	case <-time.After(TIMEOUT):
+		log.Errorf("handleCreateUser: timeout")
+		w.WriteHeader(http.StatusGatewayTimeout)
+		return
+	case resp := <-ch:
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Write(resp.Payload)
+	}
 }
 
 func (router *Router) handleSaveGameState(w http.ResponseWriter, r *http.Request) {
@@ -79,16 +93,26 @@ func (router *Router) handleSaveGameState(w http.ResponseWriter, r *http.Request
 	defer log.Infof("handleSaveGameState end")
 	params := mux.Vars(r)
 	userID := params["userID"]
+	if len(userID) == 0 {
+		log.Warnf("handleSaveGameState: no userid present in request")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	var req packets.SaveGameState
-	json.NewDecoder(r.Body).Decode(&req)
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		log.Errorf("handleSaveGameState: json.NewDecoder %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	msg := consumer.SaveStateDefinition{
 		UserID:        userID,
 		SaveGameState: req,
 	}
 	natsMsgBytes, _ := json.Marshal(msg)
-	_, err := natsCon.PublishAsync("saveGameState", natsMsgBytes, nil)
+	_, err = natsCon.PublishAsync(constants.SaveGameStateSubject, natsMsgBytes, nil)
 	if err != nil {
-		log.Errorf("msgHandler: natsCon.Publish %v", err)
+		log.Errorf("handleSaveGameState: natsCon.Publish %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -101,6 +125,11 @@ func (router *Router) handleLoadGameState(w http.ResponseWriter, r *http.Request
 	defer log.Infof("handleLoadGameState end")
 	params := mux.Vars(r)
 	userID := params["userID"]
+	if len(userID) == 0 {
+		log.Warnf("handleLoadGameState: no userid present in request")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	msg := types.Message{
 		RouterHeader: constants.RouterHeader.User,
 		PayloadURI:   constants.UserPayloadURI.LoadGameState,
@@ -112,15 +141,46 @@ func (router *Router) handleLoadGameState(w http.ResponseWriter, r *http.Request
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	resp := <-ch
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Write(resp.Payload)
+	select {
+	case <-time.After(TIMEOUT):
+		log.Errorf("handleLoadGameState: timeout %s", userID)
+		w.WriteHeader(http.StatusGatewayTimeout)
+		return
+	case resp := <-ch:
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Write(resp.Payload)
+	}
 }
 
 func (router *Router) handleUpdateFriends(w http.ResponseWriter, r *http.Request) {
 	log.Infof("handleUpdateFriends start")
 	defer log.Infof("handleUpdateFriends end")
+	params := mux.Vars(r)
+	userID := params["userID"]
+	if len(userID) == 0 {
+		log.Warnf("handleUpdateFriends: no userid present in request")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	var req packets.UpdateFriends
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		log.Errorf("handleUpdateFriends: json.NewDecoder %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	msg := consumer.UpdateFriendsDefinition{
+		UserID:  userID,
+		Friends: req.Friends,
+	}
+	natsMsgBytes, _ := json.Marshal(msg)
+	_, err = natsCon.PublishAsync(constants.UpdateFriendsSubject, natsMsgBytes, nil)
+	if err != nil {
+		log.Errorf("handleUpdateFriends natsCon.Publish %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 }
@@ -128,8 +188,35 @@ func (router *Router) handleUpdateFriends(w http.ResponseWriter, r *http.Request
 func (router *Router) handleGetFriends(w http.ResponseWriter, r *http.Request) {
 	log.Infof("handleGetFriends start")
 	defer log.Infof("handleGetFriends end")
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	r.Context()
+	params := mux.Vars(r)
+	userID := params["userID"]
+	if len(userID) == 0 {
+		log.Warnf("handleGetFriends: no userid present in request")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	msg := types.Message{
+		RouterHeader: constants.RouterHeader.User,
+		PayloadURI:   constants.UserPayloadURI.GetFriends,
+		UserID:       userID,
+	}
+	ch, err := router.serviceController.SendMessage(msg)
+	if err != nil {
+		log.Errorf("handleGetFriends: router.serviceController.SendMessage err %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	select {
+	case <-time.After(TIMEOUT):
+		log.Errorf("handleGetFriends: timeout %s", userID)
+		w.WriteHeader(http.StatusGatewayTimeout)
+		return
+	case resp := <-ch:
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Write(resp.Payload)
+	}
 }
 
 func (router *Router) HandleRouting(muxRouter *mux.Router) {

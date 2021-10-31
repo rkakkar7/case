@@ -17,7 +17,7 @@ func init() {
 }
 
 func main() {
-	redis.Init(true, true)
+	redis.Init()
 	consumer.Start()
 	exitSignal := make(chan os.Signal)
 	signal.Notify(exitSignal, syscall.SIGINT, syscall.SIGTERM)

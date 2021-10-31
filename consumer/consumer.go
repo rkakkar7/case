@@ -11,6 +11,7 @@ import (
 	"case/common/constants"
 	"case/common/packets"
 	"case/common/usermodel"
+	"case/db/redis"
 
 	nats "github.com/nats-io/nats.go"
 	stan "github.com/nats-io/stan.go"
@@ -36,6 +37,12 @@ type SaveStateDefinition struct {
 	UserID string `json:"UID"`
 	Error  int    `json:"error,omitempty"`
 	packets.SaveGameState
+}
+
+type UpdateFriendsDefinition struct {
+	UserID  string   `json:"UID"`
+	Error   int      `json:"error,omitempty"`
+	Friends []string `json:"friends"`
 }
 
 func initNats() {
@@ -69,6 +76,7 @@ func initNats() {
 
 func start() {
 	startSaveGameState()
+	startUpdateFriends()
 }
 
 func Start() {
@@ -92,12 +100,12 @@ func initMongo() {
 		err = MongoSession.Ping(ctx, readpref.Primary())
 	}
 	userStore.MongoSession = MongoSession
-	userStore.DB = "case"
-	userStore.Collections = "users"
+	userStore.DB = constants.MongoDBName
+	userStore.Collections = constants.MongoDBCollection
 }
 
 func startSaveGameState() {
-	_, err := natsCon.QueueSubscribe("saveGameState", "saveGameStateQ", func(m *stan.Msg) {
+	_, err := natsCon.QueueSubscribe(constants.SaveGameStateSubject, constants.SaveGameStateSubjectQ, func(m *stan.Msg) {
 		go common.WithRecover(func() {
 			var state SaveStateDefinition
 			err := json.Unmarshal(m.Data, &state)
@@ -126,23 +134,28 @@ func startSaveGameState() {
 			update["$inc"]["score"] = state.Score
 			var user usermodel.User
 			if user, err = updateUser(state.UserID, update); err != nil {
-				log.Errorf("error: updating user 1 %s %v %v", state.UserID, err, update)
+				log.Errorf("startSaveGameState error: updating user 1st time %s %v %v", state.UserID, err, update)
 				if err == mongo.ErrNoDocuments {
 					m.Ack()
 				}
 				return
 			}
-			if state.Score > user.Highscore {
+			if state.Score > user.Highscore { // 2-writes, or add a distributed mutex lock and read gamestate
 				delete(update, "$inc")
 				update["$set"] = make(map[string]interface{})
 				update["$set"]["highScore"] = state.Score
 				if user, err = updateUser(state.UserID, update); err != nil {
-					log.Errorf("error: updating user 2 %s %v %v", state.UserID, err, update)
+					log.Errorf("startSaveGameState error: updating user 2nd time %s %v %v", state.UserID, err, update)
 					if err == mongo.ErrNoDocuments {
 						m.Ack()
 					}
 					return
 				}
+			}
+			client := redis.GetRedis(state.UserID)
+			err = client.Set("gamestate:"+state.UserID, user.GetGameStateByte(), user.GetGameStateExpiry()).Err()
+			if err != nil {
+				log.Errorf("startSaveGameState redis.GetRedis err %v", err)
 			}
 			log.Infof("user %+v", user)
 			m.Ack()
@@ -150,9 +163,53 @@ func startSaveGameState() {
 	})
 
 	if err != nil {
-		log.Fatalf("error: subscribing to saveGameState queue: %v", err)
+		log.Fatalf("startSaveGameState error: subscribing to saveGameState queue: %v", err)
 	} else {
-		log.Info("subscribed to SaveGameState queue")
+		log.Info("startSaveGameState subscribed to SaveGameState queue")
+	}
+}
+
+func startUpdateFriends() {
+	_, err := natsCon.QueueSubscribe(constants.UpdateFriendsSubject, constants.UpdateFriendsSubjectQ, func(m *stan.Msg) {
+		go common.WithRecover(func() {
+			var delta UpdateFriendsDefinition
+			err := json.Unmarshal(m.Data, &delta)
+			log.Infof("friends %+v", delta)
+			if err != nil {
+				log.Errorf("startUpdateFriends error: unmarshal %v", err)
+				m.Ack()
+				return
+			}
+			if len(delta.UserID) == 0 {
+				log.Errorf("startUpdateFriends error: userID not present")
+				m.Ack()
+				return
+			}
+			if atomic.LoadInt32(mongoConn) > MAX_MONGO_LIMIT {
+				return
+			}
+			var update = make(map[string]map[string]interface{})
+			if update["$set"] == nil {
+				update["$set"] = make(map[string]interface{})
+			}
+			update["$set"]["friends"] = delta.Friends
+			var user usermodel.User
+			if user, err = updateUser(delta.UserID, update); err != nil {
+				log.Errorf("startupdateFriends error: updating user 1st time %s %v %v", delta.UserID, err, update)
+				if err == mongo.ErrNoDocuments {
+					m.Ack()
+				}
+				return
+			}
+			log.Infof("user %+v", user)
+			m.Ack()
+		}, "consumer.startupdateFriends")
+	})
+
+	if err != nil {
+		log.Fatalf("startupdateFriends error: subscribing to updateFriends queue: %v", err)
+	} else {
+		log.Info("startupdateFriends subscribed to updateFriends queue")
 	}
 }
 

@@ -18,10 +18,11 @@ type User struct {
 	Score       int64     `bson:"score,omitempty"`
 	GamesPlayed int64     `bson:"gamesPlayed,omitempty"`
 	Highscore   int64     `bson:"highScore,omitempty"`
+	Friends     []string  `bson:"friends,omitempty"`
 }
 
-func (user *User) GetReceiptExpiry() time.Duration {
-	expiry := 3 * time.Hour
+func (user *User) GetGameStateExpiry() time.Duration {
+	expiry := 24 * time.Hour
 	return expiry
 }
 
@@ -37,7 +38,7 @@ func (user *User) GetGameStateByte() []byte {
 
 func (user *User) GetGameState() types.GameState {
 	return types.GameState{
-		UID:         user.UID,
+		UID:         user.UID.String(),
 		GamesPlayed: user.GamesPlayed,
 		Highscore:   user.Highscore,
 	}

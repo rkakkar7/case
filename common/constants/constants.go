@@ -57,7 +57,12 @@ var UserPayloadURI = struct {
 
 var (
 	RedisCluster = []string{"localhost:6379", "localhost:6379"}
-	RedisPubSub  = []string{"localhost:6379", "localhost:6379"}
 )
 
 var MongoDBURI = "mongodb://localhost:27017"
+var MongoDBName = "case"
+var MongoDBCollection = "users"
+var SaveGameStateSubject = "saveGameState"
+var SaveGameStateSubjectQ = "saveGameStateQ"
+var UpdateFriendsSubject = "updateFriends"
+var UpdateFriendsSubjectQ = "updateFriendsQ"

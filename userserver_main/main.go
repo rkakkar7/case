@@ -20,7 +20,7 @@ func init() {
 }
 
 func main() {
-	redis.Init(true, true)
+	redis.Init()
 	rand.Seed(time.Now().UnixNano())
 	go func() {
 		log.Println(http.ListenAndServe(":"+strconv.Itoa(constants.UserserverPort-1000), nil))

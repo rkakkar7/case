@@ -5,6 +5,7 @@ import (
 	"case/common/constants"
 	"case/common/packets"
 	"case/common/types"
+	"case/db/redis"
 	"sync/atomic"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-//Listen initializes the bare minimum for starting the read and write routines
 func (client *Client) Listen() {
 	log.Infof("router.listen")
 	hbMsg := types.Message{
@@ -93,12 +93,14 @@ func (client *Client) processMessage(msg types.Message) {
 			return
 		}
 		client.createUser(msg.ChannelKey, createUser)
+	case constants.UserPayloadURI.GetFriends:
+		log.Infof("Get friends request")
+		client.getFriends(msg.UserID, msg.ChannelKey)
 	}
 }
 
 func (client *Client) createUser(channelKey string, createUser packets.CreateUser) {
 	log.Infof("client.createUser %s")
-
 	user, err := userStore.CreateUser(createUser)
 	if err != nil {
 		log.Errorf("client.createUser: userStore.LoadUserUUIDString %v", err)
@@ -116,18 +118,73 @@ func (client *Client) createUser(channelKey string, createUser packets.CreateUse
 
 func (client *Client) loadGameState(userID, channelKey string) {
 	log.Infof("client.loadGameState %s", userID)
+	gameState, err := redis.GetReceipt(userID)
+	if err == nil {
+		client.SendReply(userID, channelKey, packets.LoadGameState{
+			Score:       gameState.Highscore,
+			GamesPlayed: gameState.GamesPlayed,
+		})
+		return
+	}
 	user, err := userStore.LoadUserUUIDString(userID)
 	if err != nil {
-		log.Errorf("client.loadGameState: userStore.LoadUserUUIDString %v", err)
+		log.Errorf("client.loadGameState userStore.LoadUserUUIDString %s %v", userID, err)
 		client.SendReply(userID, channelKey, packets.LoadGameState{
 			Error: 1,
 		})
 		return
 	}
-	log.Infof("user %+v", user)
+
 	client.SendReply(userID, channelKey, packets.LoadGameState{
 		Score:       user.Highscore,
 		GamesPlayed: user.GamesPlayed,
+	})
+}
+
+func (client *Client) getFriends(userID, channelKey string) {
+	log.Infof("client.getFriends %s", userID)
+	user, err := userStore.LoadUserUUIDString(userID)
+	if err != nil {
+		log.Errorf("client.getFriends:userStore.LoadUserUUIDString %s %v", userID, err)
+		client.SendReply(userID, channelKey, packets.GetFriends{
+			Error: 1,
+		})
+		return
+	}
+
+	var friends []packets.FriendData
+	if len(user.Friends) == 0 {
+		client.SendReply(userID, channelKey, packets.GetFriends{
+			Friends: friends,
+		})
+	}
+
+	gameStates := redis.GetGameStates(user.Friends)
+	for _, friendID := range user.Friends {
+		if val, ok := gameStates[friendID]; ok {
+			friend := packets.FriendData{}
+			err := json.Unmarshal([]byte(val), &friend)
+			if err != nil {
+				log.Errorf("getFriends json.Unmarshal %s %v", userID, err)
+				continue
+			}
+			friends = append(friends, friend)
+		} else {
+			friend, err := userStore.LoadUserUUIDString(friendID)
+			if err != nil {
+				log.Errorf("getFriends userStore.LoadUserUUIDString: %s %v", userID, err)
+				continue
+			}
+			friends = append(friends, packets.FriendData{
+				Score:  friend.Score,
+				Name:   friend.Name,
+				UserID: friendID,
+			})
+		}
+	}
+
+	client.SendReply(userID, channelKey, packets.GetFriends{
+		Friends: friends,
 	})
 }
 

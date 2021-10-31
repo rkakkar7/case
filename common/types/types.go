@@ -3,8 +3,6 @@ package types
 import (
 	"net"
 	"sync"
-
-	uuid "github.com/satori/go.uuid"
 )
 
 type RouterHeader string
@@ -33,9 +31,9 @@ type ServiceDefinition struct {
 }
 
 type GameState struct {
-	UID         uuid.UUID `json:"id"`
-	GamesPlayed int64     `json:"gamesPlayed,omitempty"`
-	Highscore   int64     `json:"highscore,omitempty"`
+	UID         string `json:"id"`
+	GamesPlayed int64  `json:"gamesPlayed"`
+	Highscore   int64  `json:"highscore"`
 }
 
 type TcpListener struct {

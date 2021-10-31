@@ -41,6 +41,8 @@ type Client struct {
 	conn         net.Conn
 	buf          *bufio.Reader
 	disconnected bool
+	workers      []chan types.Message
+	writeQueue   chan []byte
 }
 
 func initNats() {
@@ -90,8 +92,8 @@ func initMongo() {
 		err = MongoSession.Ping(ctx, readpref.Primary())
 	}
 	userStore.MongoSession = MongoSession
-	userStore.DB = "case"
-	userStore.Collections = "users"
+	userStore.DB = constants.MongoDBName
+	userStore.Collections = constants.MongoDBCollection
 	log.Info("mongo init")
 }
 
@@ -104,17 +106,16 @@ func gracefulExit() {
 	sig := <-exitSignal
 	if sig == syscall.SIGTERM || sig == os.Interrupt {
 		log.Info("received signal to exit")
-
-		// for _, client := range clientList {
-		// 	msg := types.Message{
-		// 		RouterHeader: constants.RouterHeader.Disconnect,
-		// 	}
-		// 	client.disconnected = true
-		// 	client.SendMessage(msg)
-		// }
-		// tcpListener.Closed = true
-		// tcpListener.Listener.Close()
-		// tcpListener.Mutex.Unlock()
+		for _, client := range clientList {
+			msg := types.Message{
+				RouterHeader: constants.RouterHeader.Disconnect,
+			}
+			client.disconnected = true
+			client.SendMessage(msg)
+		}
+		tcpListener.Closed = true
+		tcpListener.Listener.Close()
+		tcpListener.Mutex.Unlock()
 		os.Exit(0)
 	}
 }

@@ -23,7 +23,6 @@ type SaveGameState struct {
 }
 
 type UpdateFriends struct {
-	Error   int      `json:"error,omitempty"`
 	Friends []string `json:"friends"`
 }
 
@@ -31,7 +30,7 @@ type FriendData struct {
 	Error  int    `json:"error,omitempty"`
 	UserID string `json:"id"`
 	Name   string `json:"name"`
-	Score  string `json:"highscore"`
+	Score  int64  `json:"highscore"`
 }
 
 type GetFriends struct {
