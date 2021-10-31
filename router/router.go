@@ -241,8 +241,8 @@ func initMongo() {
 		err = MongoSession.Ping(ctx, readpref.Primary())
 	}
 	userStore.MongoSession = MongoSession
-	userStore.DB = "case"
-	userStore.Collections = "users"
+	userStore.DB = constants.MongoDBName
+	userStore.Collections = constants.MongoDBCollection
 	log.Infof("mongo connected")
 }
 
