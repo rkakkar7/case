@@ -45,15 +45,24 @@ func init() {
 func (router *Router) handleUserGetAll(w http.ResponseWriter, r *http.Request) {
 	log.Infof("handleUserGetAll start")
 	defer log.Infof("handleUserGetAll end")
-
-	// select {
-	// case <-time.After(TIMEOUT):
-	// 	w.WriteHeader(http.StatusGatewayTimeout)
-	// case resp := <-ch:
-	// 	w.Header().Set("Content-Type", "application/json")
-	// 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	// 	w.Write(resp.Payload)
-	// }
+	msg := types.Message{
+		RouterHeader: constants.RouterHeader.User,
+		PayloadURI:   constants.UserPayloadURI.GetAll,
+	}
+	ch, err := router.serviceController.SendMessage(msg)
+	if err != nil {
+		log.Errorf("handleUserGetAll: router.serviceController.SendMessage err %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	select {
+	case <-time.After(TIMEOUT):
+		w.WriteHeader(http.StatusGatewayTimeout)
+	case resp := <-ch:
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Write(resp.Payload)
+	}
 }
 
 func (router *Router) handleCreateUser(w http.ResponseWriter, r *http.Request) {

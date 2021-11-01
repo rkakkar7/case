@@ -214,8 +214,8 @@ func (client *Client) getAllUsers(userID, channelKey string) {
 		})
 		return
 	}
-
-	userData := make([]packets.UserData, len(users))
+	log.Infof("users: %+v", users)
+	userData := make([]packets.UserData, 0)
 	gameStates := redis.GetGameStates(users)
 	for _, usrID := range users {
 		if val, ok := gameStates[usrID]; ok {
@@ -234,7 +234,7 @@ func (client *Client) getAllUsers(userID, channelKey string) {
 			}
 			userData = append(userData, packets.UserData{
 				Name:   usrData.Name,
-				UserID: usrData.Name,
+				UserID: usrData.UID.String(),
 			})
 		}
 	}
