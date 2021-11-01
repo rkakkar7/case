@@ -41,5 +41,6 @@ func (user *User) GetGameState() types.GameState {
 		UID:         user.UID.String(),
 		GamesPlayed: user.GamesPlayed,
 		Highscore:   user.Highscore,
+		Name:        user.Name,
 	}
 }

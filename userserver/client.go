@@ -96,6 +96,9 @@ func (client *Client) processMessage(msg types.Message) {
 	case constants.UserPayloadURI.GetFriends:
 		log.Infof("Get friends request")
 		client.getFriends(msg.UserID, msg.ChannelKey)
+	case constants.UserPayloadURI.GetAll:
+		log.Info("Get all users")
+		client.getAllUsers(msg.UserID, msg.ChannelKey)
 	}
 }
 
@@ -114,11 +117,15 @@ func (client *Client) createUser(channelKey string, createUser packets.CreateUse
 		Name:   user.Name,
 		UserID: user.UID.String(),
 	})
+	err = redis.AppendToRedisGlobal(user.UID.String())
+	if err != nil {
+		log.Errorf("redis.AppendToRedisGlobal %s %v", user.UID.String(), err)
+	}
 }
 
 func (client *Client) loadGameState(userID, channelKey string) {
 	log.Infof("client.loadGameState %s", userID)
-	gameState, err := redis.GetReceipt(userID)
+	gameState, err := redis.GetGameState(userID)
 	if err == nil {
 		client.SendReply(userID, channelKey, packets.LoadGameState{
 			Score:       gameState.Highscore,
@@ -152,11 +159,12 @@ func (client *Client) getFriends(userID, channelKey string) {
 		return
 	}
 
-	var friends []packets.FriendData
+	friends := make([]packets.FriendData, 0)
 	if len(user.Friends) == 0 {
 		client.SendReply(userID, channelKey, packets.GetFriends{
 			Friends: friends,
 		})
+		return
 	}
 
 	gameStates := redis.GetGameStates(user.Friends)
@@ -185,6 +193,54 @@ func (client *Client) getFriends(userID, channelKey string) {
 
 	client.SendReply(userID, channelKey, packets.GetFriends{
 		Friends: friends,
+	})
+}
+
+func (client *Client) getAllUsers(userID, channelKey string) {
+	log.Infof("client.getAllUsers %s", userID)
+	users, err := redis.GetRedisGlobal()
+	if err != nil {
+		log.Errorf("getAllUsers redis.GetRedisGlobal %s %v", userID, err)
+		client.SendReply(userID, channelKey, packets.GetAllUsers{
+			Error: 1,
+		})
+		return
+	}
+
+	if err == redis.Nil || len(users) == 0 {
+		log.Warnf("getAllUsers No user present in redis global %s %v", userID, err)
+		client.SendReply(userID, channelKey, packets.GetAllUsers{
+			Error: 1,
+		})
+		return
+	}
+
+	userData := make([]packets.UserData, len(users))
+	gameStates := redis.GetGameStates(users)
+	for _, usrID := range users {
+		if val, ok := gameStates[usrID]; ok {
+			usrData := packets.UserData{}
+			err := json.Unmarshal([]byte(val), &usrData)
+			if err != nil {
+				log.Errorf("getAllUsers json.Unmarshal %s %v", userID, err)
+				continue
+			}
+			userData = append(userData, usrData)
+		} else {
+			usrData, err := userStore.LoadUserUUIDString(usrID)
+			if err != nil {
+				log.Errorf("getAllUsers userStore.LoadUserUUIDString: %s %v", userID, err)
+				continue
+			}
+			userData = append(userData, packets.UserData{
+				Name:   usrData.Name,
+				UserID: usrData.Name,
+			})
+		}
+	}
+
+	client.SendReply(userID, channelKey, packets.GetAllUsers{
+		Users: userData,
 	})
 }
 

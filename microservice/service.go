@@ -27,7 +27,6 @@ type service struct {
 	Host         string
 	Port         int
 	RouterID     string
-	quit         chan struct{}
 	lastMsgWrite time.Time
 	lastMsgRead  time.Time
 	logger       *log.Entry

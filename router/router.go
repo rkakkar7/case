@@ -27,7 +27,7 @@ var userStore usermodel.UserStore
 var MAX_CLIENT int = 20
 var natsCon stan.Conn
 var natsAdress string = "nats://127.0.0.1:4222"
-var TIMEOUT = time.Second * 5
+var TIMEOUT = time.Second * 10
 
 const ClusterID = "test-cluster"
 const ClientID = "router1"
@@ -61,7 +61,7 @@ func (router *Router) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	defer log.Infof("handleCreateUser end")
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		log.Errorf("handleCreateUser: json Decoder err %v", err)
+		log.Errorf("handleCreateUser: ioutil.ReadAll err %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

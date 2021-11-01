@@ -15,6 +15,7 @@ import (
 
 var (
 	redisCluster []*redis.Client
+	redisGlobal  *redis.Client
 )
 
 const (
@@ -37,6 +38,14 @@ func Init() {
 		}
 		redisCluster[i] = client
 	}
+
+	redisGlobal = redis.NewClient(&redis.Options{
+		Addr: constants.RedisGlobal,
+	})
+	_, err = redisGlobal.Ping().Result()
+	if err != nil {
+		log.Fatalf("redis[%s]: error: %v", constants.RedisGlobal, err)
+	}
 }
 
 func GetRedis(key string) *redis.Client {
@@ -44,7 +53,7 @@ func GetRedis(key string) *redis.Client {
 	return redisCluster[id]
 }
 
-func GetReceipt(userID string) (types.GameState, error) {
+func GetGameState(userID string) (types.GameState, error) {
 	var gameState types.GameState
 	GameStateBytes, err := GetRedis(userID).Get("gamestate:" + userID).Bytes()
 	if err == nil {
@@ -73,7 +82,7 @@ func GetGameStates(friends []string) map[string]string {
 			stateLock.Lock()
 			defer stateLock.Unlock()
 			if err != nil {
-				log.Errorf("GetGameStates: redis: receipt %v", err)
+				log.Errorf("GetGameStates: redis: %v", err)
 			} else {
 				for index, key := range keys {
 					res := reply[index]
@@ -89,4 +98,12 @@ func GetGameStates(friends []string) map[string]string {
 	wg.Wait()
 
 	return gameStates
+}
+
+func GetRedisGlobal() ([]string, error) {
+	return redisGlobal.LRange("userslist", 0, -1).Result()
+}
+
+func AppendToRedisGlobal(newUser string) error {
+	return redisGlobal.RPush("userslist", newUser).Err()
 }

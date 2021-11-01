@@ -37,3 +37,13 @@ type GetFriends struct {
 	Error   int          `json:"error,omitempty"`
 	Friends []FriendData `json:"friends"`
 }
+
+type UserData struct {
+	UserID string `json:"id"`
+	Name   string `json:"name"`
+}
+
+type GetAllUsers struct {
+	Error int        `json:"error,omitempty"`
+	Users []UserData `json:"users"`
+}

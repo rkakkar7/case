@@ -57,6 +57,7 @@ var UserPayloadURI = struct {
 
 var (
 	RedisCluster = []string{"localhost:6379", "localhost:6379"}
+	RedisGlobal  = "localhost:6379"
 )
 
 var MongoDBURI = "mongodb://localhost:27017"

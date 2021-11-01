@@ -34,6 +34,7 @@ type GameState struct {
 	UID         string `json:"id"`
 	GamesPlayed int64  `json:"gamesPlayed"`
 	Highscore   int64  `json:"highscore"`
+	Name        string `json:"name"`
 }
 
 type TcpListener struct {
