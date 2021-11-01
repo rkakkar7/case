@@ -87,9 +87,7 @@ func (client *Client) processMessage(msg types.Message) {
 		err := json.Unmarshal(msg.Payload, &createUser)
 		if err != nil {
 			log.Errorf("UserPayloadURI.UserCreate json.Unmarshal %v", err)
-			client.SendReply("", msg.ChannelKey, packets.CreateUserAck{
-				Error: 1,
-			})
+			client.SendReply("", msg.ChannelKey, packets.CreateUserAck{})
 			return
 		}
 		client.createUser(msg.ChannelKey, createUser)
@@ -107,9 +105,7 @@ func (client *Client) createUser(channelKey string, createUser packets.CreateUse
 	user, err := userStore.CreateUser(createUser)
 	if err != nil {
 		log.Errorf("client.createUser: userStore.LoadUserUUIDString %v", err)
-		client.SendReply("", channelKey, packets.CreateUserAck{
-			Error: 1,
-		})
+		client.SendReply("", channelKey, packets.CreateUserAck{})
 		return
 	}
 	log.Infof("user %+v", user)
@@ -136,9 +132,7 @@ func (client *Client) loadGameState(userID, channelKey string) {
 	user, err := userStore.LoadUserUUIDString(userID)
 	if err != nil {
 		log.Errorf("client.loadGameState userStore.LoadUserUUIDString %s %v", userID, err)
-		client.SendReply(userID, channelKey, packets.LoadGameState{
-			Error: 1,
-		})
+		client.SendReply(userID, channelKey, packets.LoadGameState{})
 		return
 	}
 
@@ -151,15 +145,15 @@ func (client *Client) loadGameState(userID, channelKey string) {
 func (client *Client) getFriends(userID, channelKey string) {
 	log.Infof("client.getFriends %s", userID)
 	user, err := userStore.LoadUserUUIDString(userID)
+	friends := make([]packets.FriendData, 0)
 	if err != nil {
 		log.Errorf("client.getFriends:userStore.LoadUserUUIDString %s %v", userID, err)
 		client.SendReply(userID, channelKey, packets.GetFriends{
-			Error: 1,
+			Friends: friends,
 		})
 		return
 	}
 
-	friends := make([]packets.FriendData, 0)
 	if len(user.Friends) == 0 {
 		client.SendReply(userID, channelKey, packets.GetFriends{
 			Friends: friends,
@@ -199,10 +193,11 @@ func (client *Client) getFriends(userID, channelKey string) {
 func (client *Client) getAllUsers(userID, channelKey string) {
 	log.Infof("client.getAllUsers %s", userID)
 	users, err := redis.GetRedisGlobal()
+	userData := make([]packets.UserData, 0)
 	if err != nil {
 		log.Errorf("getAllUsers redis.GetRedisGlobal %s %v", userID, err)
 		client.SendReply(userID, channelKey, packets.GetAllUsers{
-			Error: 1,
+			Users: userData,
 		})
 		return
 	}
@@ -210,12 +205,11 @@ func (client *Client) getAllUsers(userID, channelKey string) {
 	if err == redis.Nil || len(users) == 0 {
 		log.Warnf("getAllUsers No user present in redis global %s %v", userID, err)
 		client.SendReply(userID, channelKey, packets.GetAllUsers{
-			Error: 1,
+			Users: userData,
 		})
 		return
 	}
 	log.Infof("users: %+v", users)
-	userData := make([]packets.UserData, 0)
 	gameStates := redis.GetGameStates(users)
 	for _, usrID := range users {
 		if val, ok := gameStates[usrID]; ok {

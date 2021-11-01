@@ -136,7 +136,6 @@ func ListenAndServe(port int) {
 		log.Fatalf("error: starting server: %v", err)
 	}
 
-	// privateIP := "localhost"
 	for {
 		conn, err := ln.Accept()
 		log.Infof("Got a new connection request")

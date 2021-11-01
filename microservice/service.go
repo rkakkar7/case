@@ -118,7 +118,7 @@ func (s *service) connect() {
 	s.startHB(conn, quit)
 }
 
-// make send function to write to the service
+// make send function to write to the service, outgoing data
 func (s *service) makeSendFun(conn net.Conn) func(types.Message) {
 	return func(msg types.Message) {
 		if s.Connecting && (msg.RouterHeader != constants.RouterHeader.Connect) {
@@ -142,7 +142,7 @@ func (s *service) makeSendFun(conn net.Conn) func(types.Message) {
 			return
 		}
 		s.logger.Infof("message sent")
-		conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
+		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		_, err = conn.Write(append(msgBytes, MsgDelim))
 		conn.SetWriteDeadline(time.Time{})
 		s.lastMsgWrite = time.Now()
@@ -157,10 +157,11 @@ func (s *service) makeSendFun(conn net.Conn) func(types.Message) {
 	}
 }
 
+// incoming data from services
 func (s *service) readPump(conn net.Conn, quit chan struct{}) {
 	var buf = bufio.NewReader(conn)
 	for {
-		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+		conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 		msgBytes, err := buf.ReadBytes(MsgDelim)
 		conn.SetReadDeadline(time.Time{})
 		if err != nil {
